@@ -17,14 +17,10 @@ package edu.gatech.chai.omoponfhir.omopv6.r4.mapping;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
+import edu.gatech.chai.omopv6.dba.service.*;
 import edu.gatech.chai.omopv6.model.entity.*;
 import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.Observation;
@@ -50,14 +46,6 @@ import edu.gatech.chai.omoponfhir.omopv6.r4.provider.PractitionerResourceProvide
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.CodeableConceptUtil;
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.DateUtil;
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.ExtensionUtil;
-import edu.gatech.chai.omopv6.dba.service.ConceptService;
-import edu.gatech.chai.omopv6.dba.service.FObservationViewService;
-import edu.gatech.chai.omopv6.dba.service.FactRelationshipService;
-import edu.gatech.chai.omopv6.dba.service.MeasurementService;
-import edu.gatech.chai.omopv6.dba.service.NoteService;
-import edu.gatech.chai.omopv6.dba.service.ObservationService;
-import edu.gatech.chai.omopv6.dba.service.ParameterWrapper;
-import edu.gatech.chai.omopv6.dba.service.VisitOccurrenceService;
 
 public class OmopObservation extends BaseOmopResource<Observation, FObservationView, FObservationViewService>
 		implements IResourceMapping<Observation, FObservationView> {
@@ -78,6 +66,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 	private VisitOccurrenceService visitOccurrenceService;
 	private NoteService noteService;
 	private FactRelationshipService factRelationshipService;
+	private StagingService stagingService;
 
 	public OmopObservation(WebApplicationContext context) {
 		super(context, FObservationView.class, FObservationViewService.class, ObservationResourceProvider.getType());
@@ -98,6 +87,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		visitOccurrenceService = context.getBean(VisitOccurrenceService.class);
 		noteService = context.getBean(NoteService.class);
 		factRelationshipService = context.getBean(FactRelationshipService.class);
+		stagingService = context.getBean(StagingService.class);
 
 		// Get count and put it in the counts.
 		getSize();
@@ -332,13 +322,13 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		observation.setStatus(ObservationStatus.FINAL);
 
-		if (fObservationView.getObservationDate() != null) {
-			Date myDate = createDateTime(fObservationView);
-			if (myDate != null) {
-				DateTimeType appliesDate = new DateTimeType(myDate);
-				observation.setEffective(appliesDate);
-			}
-		}
+//		if (fObservationView.getObservationDate() != null) {
+//			Date myDate = createDateTime(fObservationView);
+//			if (myDate != null) {
+//				DateTimeType appliesDate = new DateTimeType(myDate);
+//				observation.setEffective(appliesDate);
+//			}
+//		}
 
 		long directFieldTS = System.currentTimeMillis() - start;
 		System.out.println("directFieldTS: at " + Long.toString(directFieldTS) + " duration: " + Long.toString(directFieldTS - mesureOrBPTS));
@@ -2045,9 +2035,26 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		// return
 		// getMyOmopService().getSize(map)-measurementService.getSize(exceptionMap);
+		ArrayList<String> stageType = new ArrayList<String>(mapList.size());
+		for (int i=0; i<mapList.size(); i++) {
+			ParameterWrapper param = mapList.get(i);
+			if (param.getParameters().contains("id")) {
+				ArrayList<String> values =  new ArrayList<>();
+				ArrayList<String> idComponents = new ArrayList<String>(Arrays.asList(param.getValues().get(0).split("/")));
+				values.add(param.getValues().get(0).split("/")[0]);
+				stageType.add(idComponents.size() == 2 ? idComponents.get(1) : "");
+				param.setValues(values);
+			}
+		}
 		Long measurementSize = measurementService.getSize(mapList);
+		Long stagingSize = stagingService.getSize(mapList);
 		Long observationSize = getMyOmopService().getSize(mapList);
-		return measurementSize+observationSize;
+		if (stageType.size() > 0 && !stageType.get(0).equals("")) {
+			ArrayList<String> values =  new ArrayList<>();
+			values.add(mapList.get(0).getValues().get(0)+"/"+stageType.get(0));
+			mapList.get(0).setValues(values);
+		}
+		return measurementSize + stagingSize + observationSize;
 	}
 
 	@Override
@@ -2082,6 +2089,170 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		// }
 		// }
 		//
+	}
+
+	public Observation constructFhirObservationFromTNMStage(Long fhirId,Staging staging, List<String> includes, String stageType) {
+		Observation observation = new Observation();
+		observation.setId(new IdType(fhirId.toString()+"/"+stageType));
+
+		if (staging.getFPerson() != null) {
+			Reference personRef = new Reference(
+					new IdType(PatientResourceProvider.getType(), staging.getFPerson().getId()));
+			personRef.setDisplay(staging.getFPerson().getNameAsSingleString());
+			observation.setSubject(personRef);
+		}
+
+		if (staging.getStageDate() != null) {
+			Date myDate = staging.getStageDate();
+			if (myDate != null) {
+				DateTimeType appliesDate = new DateTimeType(myDate);
+				observation.setEffective(appliesDate);
+			}
+		}
+
+		if (stageType.toLowerCase().equals("tstage")) {
+			// add T stage concept as code
+			Coding statType = new Coding("NCI", "43005855811", "Generic Primary Tumor TNM Finding");
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(statType);
+			observation.setCode(code);
+			CodeableConcept tstageConcept = buildCode(staging.getTstageConcept(), Optional.of(staging.getTstageSourceConcept()));
+			observation.setValue(tstageConcept);
+		} else if (stageType.toLowerCase().equals("nstage")) {
+			// add N stage concept as code
+			Coding statType = new Coding("NCI", "6126394352", "Generic Regional Lymph Nodes TNM Finding");
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(statType);
+			observation.setCode(code);
+			CodeableConcept nstageConcept = buildCode(staging.getNstageConcept(), Optional.of(staging.getNstageSourceConcept()));
+			observation.setValue(nstageConcept);
+		} else if (stageType.toLowerCase().equals("mstage")) {
+			// add M stage concept as code
+			Coding statType = new Coding("NCI", "50662681576", "Generic Distant Metastasis TNM Finding");
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(statType);
+			observation.setCode(code);
+			CodeableConcept mstageConcept = buildCode(staging.getNstageConcept(), Optional.of(staging.getMstageSourceConcept()));
+			observation.setValue(mstageConcept);
+		}
+		observation.setStatus(ObservationStatus.FINAL);
+		return observation;
+	}
+
+	public CodeableConcept buildCode(Concept concept, Optional<Concept> sourceConcept) {
+		String omopVocabulary = concept.getVocabularyId();
+		String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
+		if ("None".equals(systemUriString)) {
+			// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
+			systemUriString = omopVocabulary;
+		}
+
+		String codeString = concept.getConceptCode();
+		String displayString;
+		if (concept.getId() == 0L) {
+			if (sourceConcept.isPresent()) {
+				displayString = sourceConcept.get().getConceptName();
+			} else {
+				displayString = "";
+			}
+		} else {
+			displayString = concept.getConceptName();
+		}
+
+		Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
+		CodeableConcept code = new CodeableConcept();
+		code.addCoding(resourceCoding);
+		return code;
+	}
+
+	public Observation constructFhirObservationFromStaging(Long fhirId, Staging staging, List<String> includes) {
+
+		Observation observation = new Observation();
+		observation.setId(new IdType(fhirId));
+
+
+		if (staging.getFPerson() != null) {
+			Reference personRef = new Reference(
+					new IdType(PatientResourceProvider.getType(), staging.getFPerson().getId()));
+			personRef.setDisplay(staging.getFPerson().getNameAsSingleString());
+			observation.setSubject(personRef);
+		}
+
+		if (staging.getStageDate() != null) {
+			Date myDate = staging.getStageDate();
+			if (myDate != null) {
+				DateTimeType appliesDate = new DateTimeType(myDate);
+				observation.setEffective(appliesDate);
+			}
+		}
+
+		if (staging.getStageClassConcept() != null) {
+			String omopVocabulary = staging.getStageClassConcept().getVocabularyId();
+			String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
+			if ("None".equals(systemUriString)) {
+				// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
+				systemUriString = omopVocabulary;
+			}
+
+			String codeString = staging.getStageClassConcept().getConceptCode();
+			String displayString;
+			if (staging.getStageClassConcept().getId() == 0L) {
+				if (staging.getStageClassSourceConcept() != null) {
+					displayString = staging.getStageClassSourceConcept().getConceptName();
+				} else {
+					displayString = "";
+				}
+			} else {
+				displayString = staging.getStageClassConcept().getConceptName();
+			}
+
+			Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(resourceCoding);
+			observation.setCode(code);
+		}
+
+		if (staging.getStageGroupConcept() != null
+				&& staging.getStageGroupConcept().getId() != 0L) {
+			// vocabulary is a required attribute for concept, then it's
+			// expected to not be null
+			String valueSystem = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(
+					staging.getStageGroupConcept().getVocabularyId());
+			if ("None".equals(valueSystem))
+				valueSystem = staging.getStageGroupConcept().getVocabularyId();
+			Coding coding = new Coding(valueSystem, staging.getStageGroupConcept().getConceptCode(),
+					staging.getStageGroupConcept().getConceptName());
+			CodeableConcept stageGroupConcept = new CodeableConcept();
+			stageGroupConcept.addCoding(coding);
+			observation.setValue(stageGroupConcept);
+		}
+
+		List<Reference> hasMember = new ArrayList<>();
+		if (staging.getTstageConcept() != null) {
+			String id = fhirId.toString()+"/tstage";
+			Reference tstageRef = new Reference(
+					new IdType(ObservationResourceProvider.getType(), id));
+			hasMember.add(tstageRef);
+		}
+		if (staging.getNstageConcept() != null) {
+			String id = fhirId.toString()+"/nstage";
+			Reference nstageRef = new Reference(
+					new IdType(ObservationResourceProvider.getType(), id));
+			hasMember.add(nstageRef);
+		}
+		if (staging.getMstageConcept() != null) {
+			String id = fhirId.toString()+"/mstage";
+			Reference mstageRef = new Reference(
+					new IdType(ObservationResourceProvider.getType(), id));
+			hasMember.add(mstageRef);
+		}
+		if (hasMember.size() > 0) {
+			observation.setHasMember(hasMember);
+		}
+
+		observation.setStatus(ObservationStatus.FINAL);
+
+		return observation;
 	}
 
 	public Observation constructFhirObservationFromMeasurement(Long fhirId, Measurement measurement, List<String> includes) {
@@ -2308,14 +2479,14 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		observation.setStatus(ObservationStatus.FINAL);
 
-		// todo: create method for measurement
-//        if (measurement.getMeasurementDate() != null) {
-//            Date myDate = createDateTime(measurement);
-//            if (myDate != null) {
-//                DateTimeType appliesDate = new DateTimeType(myDate);
-//                observation.setEffective(appliesDate);
-//            }
-//        }
+		 // todo: create method for measurement
+        if (measurement.getMeasurementDate() != null) {
+            Date myDate = measurement.getMeasurementDate();
+            if (myDate != null) {
+                DateTimeType appliesDate = new DateTimeType(myDate);
+                observation.setEffective(appliesDate);
+            }
+        }
 
 		long directFieldTS = System.currentTimeMillis() - start;
 		System.out.println("directFieldTS: at " + Long.toString(directFieldTS) + " duration: " + Long.toString(directFieldTS - mesureOrBPTS));
@@ -2448,6 +2619,18 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		long start = System.currentTimeMillis();
 
+		// modify the id to look for T/N/M stage
+		ArrayList<String> stageType = new ArrayList<>();
+		paramList.stream().forEach(param -> {
+			if (param.getParameters().contains("id")) {
+				ArrayList<String> values =  new ArrayList<>();
+				ArrayList<String> idComponents = new ArrayList<String>(Arrays.asList(param.getValues().get(0).split("/")));
+				stageType.add(idComponents.size() == 2 ? idComponents.get(1) : "");
+				values.add(param.getValues().get(0).split("/")[0]);
+				param.setValues(values);
+			}
+		});
+
 		List<Measurement> measurements = measurementService.searchWithParams(fromIndex, toIndex, paramList, sort);
 		for (Measurement measurement : measurements) {
 			Long omopId = measurement.getId();
@@ -2457,6 +2640,27 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 				listResources.add(fhirResource);
 				// Do the rev_include and add the resource to the list.
 				addRevIncludes(omopId, includes, listResources);
+			}
+		}
+
+		List<Staging> stagings = stagingService.searchWithParams(fromIndex, toIndex, paramList, sort);
+		for (Staging staging : stagings) {
+			Long omopId = staging.getId();
+			Long fhirId = IdMapping.getFHIRfromOMOP(omopId, ObservationResourceProvider.getType());
+			if (stageType.get(0).equals("")) {
+				Observation fhirResource = constructFhirObservationFromStaging(fhirId, staging, includes);
+				if (fhirResource != null) {
+					listResources.add(fhirResource);
+					// Do the rev_include and add the resource to the list.
+					addRevIncludes(omopId, includes, listResources);
+				}
+			} else {
+				Observation fhirResource = constructFhirObservationFromTNMStage(fhirId, staging, includes, stageType.get(0));
+				if (fhirResource != null) {
+					listResources.add(fhirResource);
+					// Do the rev_include and add the resource to the list.
+					addRevIncludes(omopId, includes, listResources);
+				}
 			}
 		}
 
@@ -2509,7 +2713,11 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		switch (parameter) {
 			case Observation.SP_RES_ID:
 				String organizationId = ((TokenParam) value).getValue();
-				paramWrapper.setParameterType("Long");
+				if (((TokenParam) value).getValue().contains("/")) {
+					paramWrapper.setParameterType("String");
+				} else {
+					paramWrapper.setParameterType("Long");
+				}
 				paramWrapper.setParameters(Arrays.asList("id"));
 				paramWrapper.setOperators(Arrays.asList("="));
 				paramWrapper.setValues(Arrays.asList(organizationId));
