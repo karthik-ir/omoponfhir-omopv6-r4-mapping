@@ -59,6 +59,9 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 	public static final String DIASTOLIC_LOINC_CODE = "8462-4";
 	public static final String BP_SYSTOLIC_DIASTOLIC_CODE = "55284-4";
 	public static final String BP_SYSTOLIC_DIASTOLIC_DISPLAY = "Blood pressure systolic & diastolic";
+	public static final String OBSERVATION_DATE = "observationDate";
+	public static final String STAGING_DATE = "stageDate";
+	public static final String MEASUREMENT_DATE = "measurementDate";
 
 	private ConceptService conceptService;
 	private MeasurementService measurementService;
@@ -108,12 +111,29 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		long start = System.currentTimeMillis();
 
-		String omopVocabulary = fObservationView.getObservationConcept().getVocabularyId();
-		String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
-		if ("None".equals(systemUriString)) {
-			// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
-			systemUriString = omopVocabulary;
+		Concept observationConcept = fObservationView.getObservationConcept();
+		if(observationConcept != null) {
+			String omopVocabulary = observationConcept.getVocabularyId();
+			String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
+			if ("None".equals(systemUriString)) {
+				// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
+				systemUriString = omopVocabulary;
+			}
+
+			String codeString = fObservationView.getObservationConcept().getConceptCode();
+			String displayString;
+			if (fObservationView.getObservationConcept().getId() == 0L) {
+				displayString = fObservationView.getObservationSourceValue();
+			} else {
+				displayString = fObservationView.getObservationConcept().getConceptName();
+			}
+
+			Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(resourceCoding);
+			observation.setCode(code);
 		}
+
 
 		long vocabTS = System.currentTimeMillis() - start;
 		System.out.println("vocab: at " + Long.toString(vocabTS) + " duration: " + Long.toString(vocabTS));
@@ -150,14 +170,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		long unitConceptTS = System.currentTimeMillis() - start;
 		System.out.println("unitConcept: at " + Long.toString(unitConceptTS) + " duration: " + Long.toString(unitConceptTS - unitTS));
 
-		String codeString = fObservationView.getObservationConcept().getConceptCode();
-		String displayString;
-		if (fObservationView.getObservationConcept().getId() == 0L) {
-			displayString = fObservationView.getObservationSourceValue();
-		} else {
-			displayString = fObservationView.getObservationConcept().getConceptName();
-		}
-
 		long codeStringTS = System.currentTimeMillis() - start;
 		System.out.println("codeString: at " + Long.toString(codeStringTS) + " duration: " + Long.toString(codeStringTS - unitConceptTS));
 
@@ -170,11 +182,11 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		// together. The Observation ID will be systolic's OMOP ID.
 		// public static final Long SYSTOLIC_CONCEPT_ID = new Long(3004249);
 		// public static final Long DIASTOLIC_CONCEPT_ID = new Long(3012888);
-		if (OmopObservation.SYSTOLIC_CONCEPT_ID == fObservationView.getObservationConcept().getId()) {
+		if (observationConcept!=null && OmopObservation.SYSTOLIC_CONCEPT_ID == observationConcept.getId()) {
 			// Set coding for systolic and diastolic observation
-			systemUriString = OmopCodeableConceptMapping.LOINC.getFhirUri();
-			codeString = BP_SYSTOLIC_DIASTOLIC_CODE;
-			displayString = BP_SYSTOLIC_DIASTOLIC_DISPLAY;
+			String systemUriString = OmopCodeableConceptMapping.LOINC.getFhirUri();
+			String codeString = BP_SYSTOLIC_DIASTOLIC_CODE;
+			String displayString = BP_SYSTOLIC_DIASTOLIC_DISPLAY;
 
 			List<ObservationComponentComponent> components = new ArrayList<ObservationComponentComponent>();
 			// First we add systolic component.
@@ -314,11 +326,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			high.setUnit(unitUnit);
 			observation.getReferenceRangeFirstRep().setHigh(high);
 		}
-
-		Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
-		CodeableConcept code = new CodeableConcept();
-		code.addCoding(resourceCoding);
-		observation.setCode(code);
 
 		observation.setStatus(ObservationStatus.FINAL);
 
@@ -2046,15 +2053,27 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 				param.setValues(values);
 			}
 		}
-		Long measurementSize = measurementService.getSize(mapList);
-		Long stagingSize = stagingService.getSize(mapList);
 		Long observationSize = getMyOmopService().getSize(mapList);
+		replaceDateColumn(mapList, OBSERVATION_DATE, MEASUREMENT_DATE);
+		Long measurementSize = measurementService.getSize(mapList);
+		replaceDateColumn(mapList, MEASUREMENT_DATE, STAGING_DATE);
+		Long stagingSize = stagingService.getSize(mapList);
 		if (stageType.size() > 0 && !stageType.get(0).equals("")) {
 			ArrayList<String> values =  new ArrayList<>();
 			values.add(mapList.get(0).getValues().get(0)+"/"+stageType.get(0));
 			mapList.get(0).setValues(values);
 		}
+		replaceDateColumn(mapList, STAGING_DATE, OBSERVATION_DATE);
 		return measurementSize + stagingSize + observationSize;
+	}
+
+	public void replaceDateColumn(List<ParameterWrapper> mapList, String from, String to) {
+		for (int i=0; i<mapList.size(); i++) {
+			ParameterWrapper param = mapList.get(i);
+			if (param.getParameters().contains(from)) {
+				param.setParameters(Arrays.asList(to));
+			}
+		}
 	}
 
 	@Override
@@ -2263,12 +2282,29 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 		long start = System.currentTimeMillis();
 
-		String omopVocabulary = measurement.getMeasurementConcept().getVocabularyId();
-		String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
-		if ("None".equals(systemUriString)) {
-			// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
-			systemUriString = omopVocabulary;
+		Concept measurementConcept = measurement.getMeasurementConcept();
+		if(measurementConcept != null) {
+			String omopVocabulary = measurement.getMeasurementConcept().getVocabularyId();
+			String systemUriString = fhirOmopVocabularyMap.getFhirSystemNameFromOmopVocabulary(omopVocabulary);
+			if ("None".equals(systemUriString)) {
+				// If we can't find FHIR Uri or system name, just use Omop Vocabulary Id.
+				systemUriString = omopVocabulary;
+			}
+
+			String codeString = measurement.getMeasurementConcept().getConceptCode();
+			String displayString;
+			if (measurement.getMeasurementConcept().getId() == 0L) {
+				displayString = measurement.getMeasurementSourceValue();
+			} else {
+				displayString = measurement.getMeasurementConcept().getConceptName();
+			}
+
+			Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
+			CodeableConcept code = new CodeableConcept();
+			code.addCoding(resourceCoding);
+			observation.setCode(code);
 		}
+
 
 		long vocabTS = System.currentTimeMillis() - start;
 		System.out.println("vocab: at " + Long.toString(vocabTS) + " duration: " + Long.toString(vocabTS));
@@ -2305,17 +2341,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		long unitConceptTS = System.currentTimeMillis() - start;
 		System.out.println("unitConcept: at " + Long.toString(unitConceptTS) + " duration: " + Long.toString(unitConceptTS - unitTS));
 
-		String codeString = measurement.getMeasurementConcept().getConceptCode();
-		String displayString;
-		if (measurement.getMeasurementConcept().getId() == 0L) {
-			displayString = measurement.getMeasurementSourceValue();
-		} else {
-			displayString = measurement.getMeasurementConcept().getConceptName();
-		}
-
-		long codeStringTS = System.currentTimeMillis() - start;
-		System.out.println("codeString: at " + Long.toString(codeStringTS) + " duration: " + Long.toString(codeStringTS - unitConceptTS));
-
 		// OMOP database maintains Systolic and Diastolic Blood Pressures
 		// separately.
 		// FHIR however keeps them together. Observation DAO filters out
@@ -2325,17 +2350,17 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		// together. The Observation ID will be systolic's OMOP ID.
 		// public static final Long SYSTOLIC_CONCEPT_ID = new Long(3004249);
 		// public static final Long DIASTOLIC_CONCEPT_ID = new Long(3012888);
-		if (OmopObservation.SYSTOLIC_CONCEPT_ID == measurement.getMeasurementConcept().getId()) {
+		if (measurementConcept != null && OmopObservation.SYSTOLIC_CONCEPT_ID == measurementConcept.getId()) {
 			// Set coding for systolic and diastolic observation
-			systemUriString = OmopCodeableConceptMapping.LOINC.getFhirUri();
-			codeString = BP_SYSTOLIC_DIASTOLIC_CODE;
-			displayString = BP_SYSTOLIC_DIASTOLIC_DISPLAY;
+			String systemUriString = OmopCodeableConceptMapping.LOINC.getFhirUri();
+			String codeString = BP_SYSTOLIC_DIASTOLIC_CODE;
+			String displayString = BP_SYSTOLIC_DIASTOLIC_DISPLAY;
 
 			List<ObservationComponentComponent> components = new ArrayList<ObservationComponentComponent>();
 			// First we add systolic component.
 			ObservationComponentComponent comp = new ObservationComponentComponent();
-			Coding coding = new Coding(systemUriString, measurement.getMeasurementConcept().getConceptCode(),
-					measurement.getMeasurementConcept().getConceptName());
+			Coding coding = new Coding(systemUriString, measurementConcept.getConceptCode(),
+					measurementConcept.getConceptName());
 			CodeableConcept componentCode = new CodeableConcept();
 			componentCode.addCoding(coding);
 			comp.setCode(componentCode);
@@ -2453,7 +2478,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		}
 
 		long mesureOrBPTS = System.currentTimeMillis() - start;
-		System.out.println("measureOrBPTS: at " + Long.toString(mesureOrBPTS) + " duration: " + Long.toString(mesureOrBPTS - codeStringTS));
+		System.out.println("measureOrBPTS: at " + Long.toString(mesureOrBPTS));
 
 		if (measurement.getRangeLow() != null) {
 			SimpleQuantity low = new SimpleQuantity();
@@ -2471,11 +2496,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			high.setUnit(unitUnit);
 			observation.getReferenceRangeFirstRep().setHigh(high);
 		}
-
-		Coding resourceCoding = new Coding(systemUriString, codeString, displayString);
-		CodeableConcept code = new CodeableConcept();
-		code.addCoding(resourceCoding);
-		observation.setCode(code);
 
 		observation.setStatus(ObservationStatus.FINAL);
 
@@ -2631,6 +2651,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		});
 
+		replaceDateColumn(paramList, OBSERVATION_DATE, MEASUREMENT_DATE);
 		List<Measurement> measurements = measurementService.searchWithParams(fromIndex, toIndex, paramList, sort);
 		for (Measurement measurement : measurements) {
 			Long omopId = measurement.getId();
@@ -2643,6 +2664,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		}
 
+		replaceDateColumn(paramList, MEASUREMENT_DATE, STAGING_DATE);
 		List<Staging> stagings = stagingService.searchWithParams(fromIndex, toIndex, paramList, sort);
 		for (Staging staging : stagings) {
 			Long omopId = staging.getId();
@@ -2664,6 +2686,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		}
 
+		replaceDateColumn(paramList, STAGING_DATE, OBSERVATION_DATE);
 		List<FObservationView> fObservationViews = getMyOmopService().searchWithParams(fromIndex, toIndex, paramList,
 				sort);
 
