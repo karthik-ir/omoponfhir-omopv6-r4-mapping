@@ -210,14 +210,15 @@ public class OmopMedicationStatement extends BaseOmopResource<MedicationStatemen
 		// Get medicationCodeableConcept
 		Concept drugConcept = entity.getDrugConcept();
 		CodeableConcept medication;
-		try {
-			medication = CodeableConceptUtil.getCodeableConceptFromOmopConcept(drugConcept);
-		} catch (FHIRException e1) {
-			e1.printStackTrace();
-			return null;
+		if(drugConcept!=null) {
+			try {
+				medication = CodeableConceptUtil.getCodeableConceptFromOmopConcept(drugConcept);
+			} catch (FHIRException e1) {
+				e1.printStackTrace();
+				return null;
+			}
+			medicationStatement.setMedication(medication);
 		}
-
-		medicationStatement.setMedication(medication);
 
 		// See if we can add ingredient version of this medication.
 		// Concept ingredient = conceptService.getIngredient(drugConcept);

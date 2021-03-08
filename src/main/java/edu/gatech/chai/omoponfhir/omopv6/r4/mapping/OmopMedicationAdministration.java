@@ -143,14 +143,18 @@ public class OmopMedicationAdministration extends BaseOmopResource<MedicationAdm
         // Get medicationCodeableConcept
         Concept drugConcept = entity.getDrugConcept();
         CodeableConcept medication;
-        try {
-            medication = CodeableConceptUtil.getCodeableConceptFromOmopConcept(drugConcept);
-        } catch (FHIRException e1) {
-            e1.printStackTrace();
-            return null;
+        if(drugConcept!=null) {
+            try {
+                medication = CodeableConceptUtil.getCodeableConceptFromOmopConcept(drugConcept);
+            } catch (FHIRException e1) {
+                e1.printStackTrace();
+                return null;
+            }
+            medicationAdministration.setMedication(medication);
         }
 
-        medicationAdministration.setMedication(medication);
+
+
 
         // See if we can add ingredient version of this medication.
         // Concept ingredient = conceptService.getIngredient(drugConcept);
