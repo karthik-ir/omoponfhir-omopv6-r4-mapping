@@ -2669,20 +2669,16 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		for (Staging staging : stagings) {
 			Long omopId = staging.getId();
 			Long fhirId = IdMapping.getFHIRfromOMOP(omopId, ObservationResourceProvider.getType());
-			if (stageType.get(0).equals("")) {
-				Observation fhirResource = constructFhirObservationFromStaging(fhirId, staging, includes);
-				if (fhirResource != null) {
-					listResources.add(fhirResource);
-					// Do the rev_include and add the resource to the list.
-					addRevIncludes(omopId, includes, listResources);
-				}
+			Observation fhirResource;// Do the rev_include and add the resource to the list.
+			if (stageType.size()==0 || stageType.get(0).equals("")) {
+				fhirResource = constructFhirObservationFromStaging(fhirId, staging, includes);
 			} else {
-				Observation fhirResource = constructFhirObservationFromTNMStage(fhirId, staging, includes, stageType.get(0));
-				if (fhirResource != null) {
-					listResources.add(fhirResource);
-					// Do the rev_include and add the resource to the list.
-					addRevIncludes(omopId, includes, listResources);
-				}
+				fhirResource = constructFhirObservationFromTNMStage(fhirId, staging, includes, stageType.get(0));
+			}
+			if (fhirResource != null) {
+				listResources.add(fhirResource);
+				// Do the rev_include and add the resource to the list.
+				addRevIncludes(omopId, includes, listResources);
 			}
 		}
 
