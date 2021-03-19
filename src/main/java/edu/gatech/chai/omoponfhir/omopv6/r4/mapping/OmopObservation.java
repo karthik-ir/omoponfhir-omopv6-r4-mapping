@@ -912,7 +912,7 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 		if (theSort.getParamName().equals(Observation.SP_CODE)) {
 			orderParam = "observationConcept.conceptCode " + direction;
 		} else if (theSort.getParamName().equals(Observation.SP_DATE)) {
-			orderParam = "date " + direction;
+			orderParam = "observationDate " + direction;
 		} else if (theSort.getParamName().equals(Observation.SP_PATIENT)
 				|| theSort.getParamName().equals(Observation.SP_SUBJECT)) {
 			orderParam = "fPerson.id " + direction;
@@ -2054,16 +2054,13 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		}
 		Long observationSize = getMyOmopService().getSize(mapList);
-		replaceDateColumn(mapList, OBSERVATION_DATE, MEASUREMENT_DATE);
 		Long measurementSize = measurementService.getSize(mapList);
-		replaceDateColumn(mapList, MEASUREMENT_DATE, STAGING_DATE);
 		Long stagingSize = stagingService.getSize(mapList);
 		if (stageType.size() > 0 && !stageType.get(0).equals("")) {
 			ArrayList<String> values =  new ArrayList<>();
 			values.add(mapList.get(0).getValues().get(0)+"/"+stageType.get(0));
 			mapList.get(0).setValues(values);
 		}
-		replaceDateColumn(mapList, STAGING_DATE, OBSERVATION_DATE);
 		return measurementSize + stagingSize + observationSize;
 	}
 
@@ -2651,7 +2648,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		});
 
-		replaceDateColumn(paramList, OBSERVATION_DATE, MEASUREMENT_DATE);
 		List<Measurement> measurements = measurementService.searchWithParams(fromIndex, toIndex, paramList, sort);
 		for (Measurement measurement : measurements) {
 			Long omopId = measurement.getId();
@@ -2664,7 +2660,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		}
 
-		replaceDateColumn(paramList, MEASUREMENT_DATE, STAGING_DATE);
 		List<Staging> stagings = stagingService.searchWithParams(fromIndex, toIndex, paramList, sort);
 		for (Staging staging : stagings) {
 			Long omopId = staging.getId();
@@ -2682,7 +2677,6 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			}
 		}
 
-		replaceDateColumn(paramList, STAGING_DATE, OBSERVATION_DATE);
 		List<FObservationView> fObservationViews = getMyOmopService().searchWithParams(fromIndex, toIndex, paramList,
 				sort);
 
