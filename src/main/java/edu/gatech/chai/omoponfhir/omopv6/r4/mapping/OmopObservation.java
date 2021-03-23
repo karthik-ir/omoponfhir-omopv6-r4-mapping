@@ -2654,6 +2654,13 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			Long fhirId = IdMapping.getFHIRfromOMOP(omopId, ObservationResourceProvider.getType());
 			Observation fhirResource = constructFhirObservationFromMeasurement(fhirId, measurement, includes);
 			if (fhirResource != null) {
+				try {
+					fhirResource.getValueQuantity();
+				} catch (FHIRException e) {
+
+					System.out.println("Skipping " + fhirId + " Since it has no value in it.");
+					continue;
+				}
 				listResources.add(fhirResource);
 				// Do the rev_include and add the resource to the list.
 				addRevIncludes(omopId, includes, listResources);
@@ -2671,6 +2678,14 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 				fhirResource = constructFhirObservationFromTNMStage(fhirId, staging, includes, stageType.get(0));
 			}
 			if (fhirResource != null) {
+				try{
+					fhirResource.getValueQuantity();
+				}
+				catch(FHIRException e){
+
+					System.out.println("Skipping "+fhirId+" Since it has no value in it.");
+					continue;
+				}
 				listResources.add(fhirResource);
 				// Do the rev_include and add the resource to the list.
 				addRevIncludes(omopId, includes, listResources);
@@ -2687,7 +2702,14 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 			Long omopId = fObservationView.getId();
 			Long fhirId = IdMapping.getFHIRfromOMOP(omopId, ObservationResourceProvider.getType());
 			Observation fhirResource = constructResource(fhirId, fObservationView, includes);
+
 			if (fhirResource != null) {
+				try {
+					fhirResource.getValueQuantity();
+				} catch (FHIRException e) {
+					System.out.println("Skipping " + fhirId + " Since it has no value in it.");
+					continue;
+				}
 				listResources.add(fhirResource);
 				// Do the rev_include and add the resource to the list.
 				addRevIncludes(omopId, includes, listResources);
