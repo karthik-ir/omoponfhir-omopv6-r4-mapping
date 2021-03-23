@@ -218,6 +218,9 @@ public class OmopMedicationStatement extends BaseOmopResource<MedicationStatemen
 				return null;
 			}
 			medicationStatement.setMedication(medication);
+		} else {
+			logger.info("drugConcept is null hence ignoring MedicationStatement Object");
+			return null;
 		}
 
 		// See if we can add ingredient version of this medication.
