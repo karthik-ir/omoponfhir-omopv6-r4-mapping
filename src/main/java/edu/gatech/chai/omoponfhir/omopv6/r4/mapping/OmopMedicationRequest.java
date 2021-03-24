@@ -80,7 +80,7 @@ import edu.gatech.chai.omopv6.model.entity.VisitOccurrence;
 public class OmopMedicationRequest extends BaseOmopResource<MedicationRequest, DrugExposure, DrugExposureService>
 		implements IResourceMapping<MedicationRequest, DrugExposure> {
 
-	public static Long MEDICATIONREQUEST_CONCEPT_TYPE_ID = 38000177L;
+	public static Long MEDICATIONREQUEST_CONCEPT_TYPE_ID = 38000175L;
 	private static OmopMedicationRequest omopMedicationRequest = new OmopMedicationRequest();
 	private VisitOccurrenceService visitOccurrenceService;
 	private ConceptService conceptService;

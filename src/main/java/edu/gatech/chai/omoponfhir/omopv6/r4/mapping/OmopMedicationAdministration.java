@@ -3,11 +3,13 @@ package edu.gatech.chai.omoponfhir.omopv6.r4.mapping;
 import ca.uhn.fhir.rest.param.*;
 import edu.gatech.chai.omoponfhir.omopv6.r4.provider.*;
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.CodeableConceptUtil;
+import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.ExtensionUtil;
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.TerminologyServiceClient;
 import edu.gatech.chai.omoponfhir.omopv6.r4.utilities.ThrowFHIRExceptions;
 import edu.gatech.chai.omopv6.dba.service.*;
 import edu.gatech.chai.omopv6.model.entity.*;
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +22,7 @@ public class OmopMedicationAdministration extends BaseOmopResource<MedicationAdm
             implements IResourceMapping<MedicationAdministration, DrugExposure> {
     private static final Logger logger = LoggerFactory.getLogger(OmopMedicationAdministration.class);
 
+    public static Long MEDICATIONADMINISTRATION_CONCEPT_TYPE_ID = 43542358L;
     private static OmopMedicationAdministration omopMedicationAdministration = new OmopMedicationAdministration();
     private VisitOccurrenceService visitOccurrenceService;
     private ConceptService conceptService;
@@ -515,6 +518,62 @@ public class OmopMedicationAdministration extends BaseOmopResource<MedicationAdm
         }
 
         return mapList;
+    }
+
+    final ParameterWrapper filterParam = new ParameterWrapper(
+            "Long",
+            Arrays.asList("drugTypeConcept.id"),
+            Arrays.asList("="),
+            Arrays.asList(String.valueOf(OmopMedicationAdministration.MEDICATIONADMINISTRATION_CONCEPT_TYPE_ID)),
+            "or"
+    );
+
+    @Override
+    public Long getSize() {
+        List<ParameterWrapper> paramList = new ArrayList<ParameterWrapper> ();
+        // call getSize with empty parameter list. The getSize will add filter parameter.
+
+        Long size = getSize(paramList);
+        ExtensionUtil.addResourceCount(MedicationAdministrationResourceProvider.getType(), size);
+
+        return size;
+    }
+
+    @Override
+    public Long getSize(List<ParameterWrapper> paramList) {
+        paramList.add(filterParam);
+
+        return getMyOmopService().getSize(paramList);
+    }
+
+    @Override
+    public void searchWithoutParams(int fromIndex, int toIndex, List<IBaseResource> listResources,
+                                    List<String> includes, String sort) {
+
+        // This is read all. But, since we will add an exception conditions to add filter.
+        // we will call the search with params method.
+        List<ParameterWrapper> paramList = new ArrayList<ParameterWrapper> ();
+        searchWithParams (fromIndex, toIndex, paramList, listResources, includes, sort);
+    }
+
+    @Override
+    public void searchWithParams(int fromIndex, int toIndex, List<ParameterWrapper> mapList,
+                                 List<IBaseResource> listResources, List<String> includes, String sort) {
+        mapList.add(filterParam);
+
+        List<DrugExposure> entities = getMyOmopService().searchWithParams(fromIndex, toIndex, mapList, sort);
+
+        for (DrugExposure entity : entities) {
+            Long omopId = entity.getIdAsLong();
+            Long fhirId = IdMapping.getFHIRfromOMOP(omopId, getMyFhirResourceType());
+            MedicationAdministration fhirResource = constructResource(fhirId, entity, includes);
+            if (fhirResource != null) {
+                listResources.add(fhirResource);
+                // Do the rev_include and add the resource to the list.
+                addRevIncludes(omopId, includes, listResources);
+            }
+
+        }
     }
 
     @Override
