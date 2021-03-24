@@ -144,6 +144,11 @@ public class OmopMedicationStatement extends BaseOmopResource<MedicationStatemen
 		MedicationStatement medicationStatement = new MedicationStatement();
 		medicationStatement.setId(new IdType(fhirId));
 
+		if(entity.getDrugConcept()==null) {
+			logger.info("Not constructing resource: NO DRUG CONCEPT");
+			return null;
+		}
+
 		// status is required field in FHIR MedicationStatement.
 		// However, we do not have a field in OMOP.
 		// We will use stop_reason field to see if there is any data in there.

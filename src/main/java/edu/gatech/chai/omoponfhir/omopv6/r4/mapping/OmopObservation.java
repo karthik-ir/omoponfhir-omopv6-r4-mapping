@@ -106,6 +106,12 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 	@Override
 	public Observation constructFHIR(Long fhirId, FObservationView fObservationView) {
+
+		if (fObservationView.getValueAsConcept() == null && fObservationView.getValueAsNumber() == null) {
+			logger.info("Not constructing resource: NO RESULT VALUE");
+			return null;
+		}
+
 		Observation observation = new Observation();
 		observation.setId(new IdType(fhirId));
 
@@ -2183,6 +2189,12 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 	public Observation constructFhirObservationFromStaging(Long fhirId, Staging staging, List<String> includes) {
 
+
+		if (staging.getStageGroupConcept() == null) {
+			logger.info("Not constructing resource: NO RESULT VALUE");
+			return null;
+		}
+
 		Observation observation = new Observation();
 		observation.setId(new IdType(fhirId));
 
@@ -2273,6 +2285,10 @@ public class OmopObservation extends BaseOmopResource<Observation, FObservationV
 
 	public Observation constructFhirObservationFromMeasurement(Long fhirId, Measurement measurement, List<String> includes) {
 
+		if (measurement.getValueAsConcept() == null && measurement.getValueAsNumber() == null) {
+			logger.info("Not constructing resource: NO RESULT VALUE");
+			return null;
+		}
 		logger.info("CONSTRUCTING FHIR RESOURCE FROM MEASUREMENT");
 		Observation observation = new Observation();
 		observation.setId(new IdType(fhirId));
