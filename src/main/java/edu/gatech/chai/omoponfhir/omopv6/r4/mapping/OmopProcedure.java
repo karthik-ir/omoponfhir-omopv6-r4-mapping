@@ -20,17 +20,8 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
-import org.hl7.fhir.r4.model.CodeableConcept;
-import org.hl7.fhir.r4.model.Coding;
-import org.hl7.fhir.r4.model.DateTimeType;
-import org.hl7.fhir.r4.model.Encounter;
-import org.hl7.fhir.r4.model.IdType;
-import org.hl7.fhir.r4.model.Patient;
-import org.hl7.fhir.r4.model.Practitioner;
-import org.hl7.fhir.r4.model.Procedure;
+import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.Procedure.ProcedurePerformerComponent;
-import org.hl7.fhir.r4.model.Reference;
-import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.springframework.web.context.ContextLoaderListener;
 import org.springframework.web.context.WebApplicationContext;
@@ -159,6 +150,21 @@ public class OmopProcedure extends BaseOmopResource<Procedure, ProcedureOccurren
 		Procedure procedure = new Procedure(); //Assuming default active state
 		procedure.setId(new IdType(fhirId));
 
+		if(entity.getValue()!=null) {
+			List<Extension> exts = new ArrayList<>();
+
+			Extension ex = new Extension();
+			ex.setUrl("http://hl7.org/fhir/us/mcode/StructureDefinition/obf-TotalRadiationDoseDelivered-extension");
+			Quantity t = new Quantity();
+			t.setValue(entity.getValue());
+			t.setCode("cGy");
+			t.setSystem("http://unitsofmeasure.org");
+
+			ex.setValue(t);
+			exts.add(ex);
+			procedure.setExtension(exts);
+		}
+
 		// Set subject 
 		Reference patientReference = new Reference(new IdType(PatientResourceProvider.getType(), entity.getFPerson().getId()));
 		patientReference.setDisplay(entity.getFPerson().getNameAsSingleString());
@@ -199,7 +205,7 @@ public class OmopProcedure extends BaseOmopResource<Procedure, ProcedureOccurren
 			Reference contextReference = new Reference(new IdType(EncounterResourceProvider.getType(), visitOccurrence.getId())); 
 			procedure.setEncounter(contextReference);
 		}
-		
+
 		// Performer mapping
 		Provider provider = entity.getProvider();
 		if (provider != null && provider.getId() != 0L) {
